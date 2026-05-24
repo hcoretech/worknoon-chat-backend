@@ -7,13 +7,16 @@ import { Server } from 'socket.io';
 import { initChatSocket } from './sockets/chat';
 import chatRoutes from './routes/chat';
 import authRoutes from './routes/auth';
+import path = require('path');
 
 // imports from your local db.ts file
 import { connectDB, getDB } from './database/db';
-
-
-
 const app = express();
+
+
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+
 app.use('/api/auth', authRoutes);
 app.use('/api/chat', chatRoutes);
 const httpServer = http.createServer(app);
