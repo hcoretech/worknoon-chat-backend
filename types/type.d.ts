@@ -12,3 +12,10 @@ export interface UserPayload extends JwtPayload {
 export interface AuthenticatedRequest extends Request {
   user?: UserPayload;
 }
+
+export interface IFileAttachment {
+  url: string;
+  filename: string;
+  mimetype: string;
+  size: number;
+}
