@@ -3,10 +3,12 @@ dotenv.config();
 
 import express = require('express');
 import http = require('http');
-import { Server, Socket } from 'socket.io';
+import { Server } from 'socket.io';
+import { initChatSocket } from './sockets/chat';
 
 // imports from your local db.ts file
 import { connectDB, getDB } from './database/db';
+
 
 
 const app = express();
@@ -18,28 +20,11 @@ const io = new Server(httpServer, {
     methods: ['GET', 'POST']
   }
 });
+
 app.use(express.json());
 
-io.on('connection', (socket: Socket) => {
-  console.log(` Simple Test Success: Client attached cleanly! Socket ID: ${socket.id}`);
 
-  // 1. Listen for a basic payload ping frame from any connected user
-  socket.on('ping_test', (data: { message: string }) => {
-    console.log(`📥 Received ping_test from client [${socket.id}]:`, data.message);
-
-    // 2. send  a response packet right back down to that specific user terminal
-    socket.emit('pong_test', {
-      reply: "Hello from the root workspace server! Real-time frame loopback operational.",
-      timestamp: new Date().toISOString()
-    });
-  });
-
-  // 3. Simple log on close
-  socket.on('disconnect', () => {
-    console.log(`🔌 Simple Test Success: Client detached safely. Socket ID: ${socket.id}`);
-  });
-});
-
+initChatSocket(io);
 
 
 
