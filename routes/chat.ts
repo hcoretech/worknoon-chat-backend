@@ -2,6 +2,8 @@ import express = require('express');
 const router = express.Router();
 import { ObjectId } from 'mongodb';
 import { getDB } from '../database/db';
+import { IFileAttachment } from '../types/type';
+import { uploadMiddleware } from '../middleware/upload';
 
 const ensureCollectionsExist = async (db: any) => {
   try {
@@ -81,7 +83,7 @@ router.post('/conversations', verifyTokenInline, async (req: any, res: any): Pro
     const newConversationDoc = {
       participants: participantIds,
       contextType, // 'buyer-to-designer' | 'buyer-to-merchant' | 'buyer-to-agent'
-      contextRefId: contextRefId || null, // Optional Order ID, Custom Request ID, or SKU reference
+      contextRefId: contextRefId || null, 
       lastReadTracking,
       createdAt: new Date(),
       updatedAt: new Date()
@@ -162,5 +164,53 @@ router.post('/messages', verifyTokenInline, async (req: any, res: any): Promise<
     return res.status(500).json({ error: err.message });
   }
 });
+
+router.post('/conversations/:conversationId/upload', verifyTokenInline, uploadMiddleware.single('file'), async (req: any, res: any): Promise<any> => {
+  try {
+    const { conversationId } = req.params;
+    const db = getDB();
+    const currentUserId = req.user.id;
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'Request pipeline file binary attachment absent.' });
+    }
+
+    const attachmentPayload: IFileAttachment = {
+      url: `/uploads/${req.file.filename}`,
+      filename: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size
+    };
+
+    const multiMediaMessageDoc = {
+      conversationId: new ObjectId(conversationId),
+      senderId: new ObjectId(currentUserId),
+      senderName: req.user.name,
+      senderRole: req.user.role,
+      text: req.body.text || `Shared an attachment file: ${req.file.originalname}`,
+      fileAttachment: attachmentPayload,
+      timestamp: new Date()
+    };
+
+
+    const result = await db.collection('chat').insertOne(multiMediaMessageDoc);
+
+  
+    await db.collection('conversations').updateOne(
+      { _id: new ObjectId(conversationId) },
+      { $set: { updatedAt: new Date() } }
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: "Multi-media data logged safely to existing chat collection.",
+      data: { _id: result.insertedId, ...multiMediaMessageDoc }
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
 
 export default router;
