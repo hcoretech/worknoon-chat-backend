@@ -1,19 +1,39 @@
-import express, { Request, Response } from 'express';
-import { createServer } from 'http';
+import dotenv from 'dotenv';
+dotenv.config();
+
+import express = require('express');
+import http = require('http');
+
+// 🔌 Explicit root imports from your local db.ts file
+import { connectDB, getDB } from './database/db';
+
 
 const app = express();
-const httpServer = createServer(app);
-
+const httpServer = http.createServer(app);
 
 
 app.use(express.json());
 
 
-app.get('/', (req: Request, res: Response) => {
-  res.status(200).send('Welcome to the worknoon chat server');
+
+
+app.get('/', (req: express.Request, res: express.Response) => {
+  res.status(200).send('welcome to worknoon-chat-backend.');
 });
 
-const PORT = 9000;
-httpServer.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+const startServer = async () => {
+  try {
+    // connect to database first
+    await connectDB();
+
+    const PORT = process.env.PORT || 5000;
+    httpServer.listen(PORT, () => {
+      console.log(`🚀 Express server running on http://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.error("❌ Failed to bootstrap application lifecycle:", error);
+    process.exit(1);
+  }
+};
+
+startServer();
