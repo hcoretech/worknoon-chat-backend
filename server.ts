@@ -5,6 +5,7 @@ import express = require('express');
 import http = require('http');
 import { Server } from 'socket.io';
 import { initChatSocket } from './sockets/chat';
+import chatRoutes from './routes/chat';
 
 // imports from your local db.ts file
 import { connectDB, getDB } from './database/db';
@@ -12,6 +13,8 @@ import { connectDB, getDB } from './database/db';
 
 
 const app = express();
+app.use('/', chatRoutes);
+
 const httpServer = http.createServer(app);
 
 const io = new Server(httpServer, {
