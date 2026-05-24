@@ -1,6 +1,10 @@
 import { MongoClient, ServerApiVersion, Db } from 'mongodb';
+import dns = require('dns');
+
+dns.setServers(['1.1.1.1', '8.8.8.8']);
 
 let dbInstance: Db | null = null;
+
 
 export const connectDB = async (): Promise<Db> => {
   if (dbInstance) return dbInstance;
