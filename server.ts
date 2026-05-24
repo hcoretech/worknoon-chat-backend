@@ -6,6 +6,7 @@ import http = require('http');
 import { Server } from 'socket.io';
 import { initChatSocket } from './sockets/chat';
 import chatRoutes from './routes/chat';
+import authRoutes from './routes/auth';
 
 // imports from your local db.ts file
 import { connectDB, getDB } from './database/db';
@@ -13,8 +14,8 @@ import { connectDB, getDB } from './database/db';
 
 
 const app = express();
-app.use('/', chatRoutes);
-
+app.use('/api/auth', authRoutes);
+app.use('/api/chat', chatRoutes);
 const httpServer = http.createServer(app);
 
 const io = new Server(httpServer, {
@@ -44,7 +45,7 @@ const startServer = async () => {
       console.log(`🚀 Express server running on http://localhost:${PORT}`);
     });
   } catch (error) {
-    console.error("❌ Failed to bootstrap application lifecycle:", error);
+    console.error(":", error);
     process.exit(1);
   }
 };
