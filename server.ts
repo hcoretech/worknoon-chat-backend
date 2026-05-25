@@ -8,13 +8,22 @@ import { initChatSocket } from './sockets/chat';
 import chatRoutes from './routes/chat';
 import authRoutes from './routes/auth';
 import path = require('path');
+import cors from 'cors';
+import { connectDB } from './database/db';
 
-// imports from your local db.ts file
-import { connectDB, getDB } from './database/db';
 const app = express();
 
+app.use(cors({
+  origin: 'http://localhost:3000', 
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true 
+}));
 
+app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+
 
 
 app.use('/api/auth', authRoutes);
@@ -23,12 +32,13 @@ const httpServer = http.createServer(app);
 
 const io = new Server(httpServer, {
   cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
+   origin: 'http://localhost:3000',
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   }
 });
 
-app.use(express.json());
+
 
 
 initChatSocket(io);
@@ -43,7 +53,7 @@ const startServer = async () => {
     // connect to database first
     await connectDB();
 
-    const PORT = process.env.PORT || 5000;
+    const PORT = process.env.PORT || 9000;
     httpServer.listen(PORT, () => {
       console.log(`🚀 Express server running on http://localhost:${PORT}`);
     });
