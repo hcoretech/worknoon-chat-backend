@@ -6,7 +6,8 @@ import { sendEmail } from '../utils/sendEmail';
 
 const router = express.Router();
 
-router.post('/signup', async (req: Request, res: Response): Promise<any> => {
+router.post('/signup', async (req: express.Request, res: express.Response): Promise<any> => {
+  console.log("Checking for existing user with email:");
   try {
     const { name, email, password, role } = req.body;
     const db = getDB();
@@ -16,6 +17,7 @@ router.post('/signup', async (req: Request, res: Response): Promise<any> => {
     }
 
     // Verify user uniqueness
+    
     const userExists = await db.collection('users').findOne({ email: email.toLowerCase().trim() });
     if (userExists) {
       return res.status(400).json({ message: 'A user account with this email address already exists.' });
