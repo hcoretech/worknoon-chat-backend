@@ -1,11 +1,13 @@
-import express = require('express');
+import express, { Request, Response } from 'express'; 
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { getDB } from '../database/db';
+import { sendEmail } from '../utils/sendEmail'; 
+
 const router = express.Router();
-import bcrypt = require('bcryptjs');
-import jwt = require('jsonwebtoken');
-import { getDB } from  '../database/db';
 
 
-router.post('/signup', async (req: express.Request, res: express.Response) => {
+router.post('/signup', async (req: Request, res: Response): Promise<any> => {
   try {
     const { name, email, password, role } = req.body;
     const db = getDB();
@@ -14,13 +16,13 @@ router.post('/signup', async (req: express.Request, res: express.Response) => {
       return res.status(400).json({ message: 'Missing name, email, or password input parameters.' });
     }
 
-    // 1. Verify user does not already exist
+    // Verify user uniqueness
     const userExists = await db.collection('users').findOne({ email: email.toLowerCase().trim() });
     if (userExists) {
       return res.status(400).json({ message: 'A user account with this email address already exists.' });
     }
 
-    // 2. Hash plain text password using standard cryptographic nesting cycles
+    // Hash plain text password 
     const salt = await bcrypt.genSalt(12);
     const hashedPassword = await bcrypt.hash(password, salt);
 
@@ -28,19 +30,37 @@ router.post('/signup', async (req: express.Request, res: express.Response) => {
       name: name.trim(),
       email: email.toLowerCase().trim(),
       password: hashedPassword,
-      role: role || 'customer', // Default fallback profiles: customer, designer, merchant, agent, admin
+      role: role || 'customer', // Default fallback configuration
       createdAt: new Date()
     };
 
-    // 3. Persist the user profile document down to the cluster
+    // Save profile to MongoDB Atlas collection
     const result = await db.collection('users').insertOne(newUserDoc);
+    const userIdString = result.insertedId.toString();
 
-    // 4. Issue a signed validation access token string
+    // Issue a signed access token string matching your UserPayload signature
     const token = jwt.sign(
-      { id: result.insertedId.toString(), name: newUserDoc.name, role: newUserDoc.role },
+      { id: userIdString, name: newUserDoc.name, role: newUserDoc.role },
       process.env.JWT_SECRET as string,
       { expiresIn: '7d' }
     );
+
+    
+      await sendEmail({
+        email: newUserDoc.email,
+        subject: 'Welcome to the Platform!',
+        message: `Hi ${newUserDoc.name},\n\nYour account has been successfully created with the role: ${newUserDoc.role}.\n\nWelcome aboard!`,
+        html: `
+          <h1>Welcome to our worknoon Chat Platform, ${newUserDoc.name}!</h1>
+          <p>Your account has been successfully set up as a <strong>${newUserDoc.role}</strong>.</p>
+          <br />
+          <p>Best regards,<br />Worknoon Team</p>
+        `  
+      });
+    } catch (emailError) {
+      
+      console.error('Nodemailer pipeline notification execution failure:', emailError);
+    }
 
     return res.status(201).json({
       success: true,
@@ -53,7 +73,7 @@ router.post('/signup', async (req: express.Request, res: express.Response) => {
 });
 
 
-router.post('/login', async (req: express.Request, res: express.Response) => {
+router.post('/login', async (req: Request, res: Response): Promise<any> => {
   try {
     const { email, password } = req.body;
     const db = getDB();
@@ -62,19 +82,19 @@ router.post('/login', async (req: express.Request, res: express.Response) => {
       return res.status(400).json({ message: 'Missing email or password fields.' });
     }
 
-    // 1. Check if user email match exists
+    /
     const user = await db.collection('users').findOne({ email: email.toLowerCase().trim() });
     if (!user) {
       return res.status(401).json({ message: 'Authentication failure: Invalid credential values.' });
     }
 
-    // 2. Natively evaluate password matching metrics
+    // Evaluate cryptographic password metrics
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
       return res.status(401).json({ message: 'Authentication failure: Invalid credential values.' });
     }
 
-    // 3. Issue new validation token mapping properties
+    // Sign login validation session token properties
     const token = jwt.sign(
       { id: user._id.toString(), name: user.name, role: user.role },
       process.env.JWT_SECRET as string,
