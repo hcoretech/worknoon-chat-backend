@@ -6,7 +6,8 @@ import { sendEmail } from '../utils/sendEmail';
 
 const router = express.Router();
 
-router.post('/signup', async (req: Request, res: Response): Promise<any> => {
+
+router.post('/signup', async (req: express.Request, res: express.Response) => {
   try {
     const { name, email, password, role } = req.body;
     const db = getDB();
@@ -44,23 +45,6 @@ router.post('/signup', async (req: Request, res: Response): Promise<any> => {
       { expiresIn: '7d' }
     );
 
-    // FIX: Added the missing try block around the email pipeline
-    try {
-      await sendEmail({
-        email: newUserDoc.email,
-        subject: 'Welcome to the worknoon chat Platform!',
-        message: `Hi ${newUserDoc.name},\n\nYour account has been successfully created with the role: ${newUserDoc.role}.\n\nWelcome aboard!`,
-        html: `
-          <h1>Welcome to our worknoon Chat Platform, ${newUserDoc.name}!</h1>
-          <p>Your account has been successfully set up as a <strong>${newUserDoc.role}</strong>.</p>
-          <br />
-          <p>Best regards,<br />Worknoon Team</p>
-        `  
-      });
-    } catch (emailError) {
-      console.error('Nodemailer pipeline notification execution failure:', emailError);
-    }
-
     return res.status(201).json({
       success: true,
       token: `Bearer ${token}`,
@@ -71,7 +55,8 @@ router.post('/signup', async (req: Request, res: Response): Promise<any> => {
   }
 });
 
-router.post('/login', async (req: Request, res: Response): Promise<any> => {
+
+router.post('/login', async (req: express.Request, res: express.Response) => {
   try {
     const { email, password } = req.body;
     const db = getDB();
@@ -80,6 +65,7 @@ router.post('/login', async (req: Request, res: Response): Promise<any> => {
       return res.status(400).json({ message: 'Missing email or password fields.' });
     }
 
+    // 1. Check if user email match exists
     const user = await db.collection('users').findOne({ email: email.toLowerCase().trim() });
     if (!user) {
       return res.status(401).json({ message: 'Authentication failure: Invalid credential values.' });
