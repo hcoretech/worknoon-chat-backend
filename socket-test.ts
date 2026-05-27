@@ -25,3 +25,5 @@ clientSocket.on('connect_error', (err) => {
   console.error('❌ Failed connecting to real-time engine:', err.message);
   process.exit(1);
 });
+
+
