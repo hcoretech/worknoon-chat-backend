@@ -1,4 +1,4 @@
-// 📁 File: routes/chat.ts
+
 import express = require('express');
 const router = express.Router();
 import { ObjectId } from 'mongodb';
@@ -7,9 +7,7 @@ import { IFileAttachment } from '../types/type';
 import { uploadMiddleware } from '../middleware/upload';
 import jwt from 'jsonwebtoken';
 
-/**
- * Validates database states and auto-heals essential tables if dropped.
- */
+
 const ensureCollectionsExist = async (db: any) => {
   try {
     const collections = await db.listCollections().toArray();
@@ -29,11 +27,6 @@ const ensureCollectionsExist = async (db: any) => {
   }
 };
 
-/**
- * Inline Request Validation Interceptor
- * Authenticates incoming requests, decodes payloads safely, 
- * and maps identity fields to the downstream context pipeline.
- */
 const verifyTokenInline = (req: any, res: any, next: any) => {
   const authHeader = req.headers.authorization;
 
@@ -49,11 +42,11 @@ const verifyTokenInline = (req: any, res: any, next: any) => {
       return res.status(401).json({ message: 'Access denied: Token string segment missing.' });
     }
 
-    // 🚀 FIX: Fallback validation prevents crash if environment arrays load out of order
+  
     const secretKey = (process.env.JWT_SECRET || 'fallback_dev_secret_key_change_me').trim();
     const decoded = jwt.verify(token, secretKey) as any;
     
-    // 🚀 FIX: Polymorphic user ID lookup mapping prevents undefined assignment exceptions
+
     const resolvedUserId = decoded.id || decoded._id || decoded.userId;
 
     if (!resolvedUserId) {
@@ -64,7 +57,7 @@ const verifyTokenInline = (req: any, res: any, next: any) => {
     req.user = {
       id: resolvedUserId.toString(),
       name: decoded.name || decoded.fullName || 'Authenticated User',
-      role: decoded.role || 'user'
+       role: (decoded.role || 'customer').toLowerCase().trim() 
     };
     
     next();
@@ -74,7 +67,9 @@ const verifyTokenInline = (req: any, res: any, next: any) => {
   }
 };
 
-// 📡 SECURE CHANNELS AGGREGATION ROUTE
+// 📁 File: worknoon-chat-backend/src/routes/chat.ts
+
+// 📡 SECURE CHANNELS AGGREGATION ROUTE (FINAL STABLE VERSION)
 router.get('/channels', verifyTokenInline, async (req: any, res: any): Promise<any> => {
   try {
     const db = getDB();
@@ -86,32 +81,85 @@ router.get('/channels', verifyTokenInline, async (req: any, res: any): Promise<a
 
     const currentUserId = new ObjectId(userIdString);
 
-    const conversations = await db.collection('conversations')
-      .find({ participants: currentUserId })
-      .sort({ updatedAt: -1 })
-      .toArray();
+    // 1. Join with the users collection to fetch the real partner name parameters
+    const conversations = await db.collection('conversations').aggregate([
+      { 
+        $match: { participants: currentUserId } 
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'participants',
+          foreignField: '_id',
+          as: 'partnerDetails'
+        }
+      },
+      { 
+        $sort: { updatedAt: -1 } 
+      }
+    ]).toArray();
 
-    const formattedChannels = conversations.map(conv => {
-      const partnerId = conv.participants.find((id: any) => id.toString() !== userIdString);
+    const formattedChannels = await Promise.all(conversations.map(async (conv) => {
+      // 🚀 FIXED: Strictly isolate the OTHER participant, ensuring your own account is NEVER selected
+      const partnerDoc = conv.partnerDetails.find(
+        (u: any) => u._id.toString() !== currentUserId.toString()
+      );
+
+      // Security Shield: If no other partner document exists, skip processing or fall back cleanly
+      if (!partnerDoc) return null;
+
+      const partnerIdStr = partnerDoc._id.toString();
+      const partnerRealName = partnerDoc.fullName || partnerDoc.name || partnerDoc.email || 'Workspace Operator';
+      const partnerRoleProfile = (partnerDoc.role || 'customer').toLowerCase();
+
+      // Calculate active unread counters for this channel partition
+      const unreadCount = await db.collection('chat').countDocuments({
+        conversationId: conv._id,
+        senderId: { $ne: currentUserId },
+        isRead: { $ne: true }
+      });
+
+      // Pull last message text preview out of logs safely
+      const lastMessageArr = await db.collection('chat')
+        .find({ conversationId: conv._id })
+        .sort({ timestamp: -1 })
+        .limit(1)
+        .toArray();
+
+      // 🚀 FIXED: Clear custom layout placeholders to match clean enterprise aesthetics
+      let lastMessageTextPreview = 'New conversation context created.';
+      if (lastMessageArr.length > 0) {
+        // Handle variations between text and messageBody keys securely
+        lastMessageTextPreview = lastMessageArr[0].text || lastMessageArr[0].messageBody || 'Shared an asset attachment.';
+      }
 
       return {
         _id: conv._id.toString(),
-        type: conv.contextType || 'all',
+        type: partnerRoleProfile, 
         currentStatusState: 'active',
+        unreadCount: unreadCount || 0,
+        lastMessageText: lastMessageTextPreview,
+        updatedAt: conv.updatedAt || conv.createdAt,
         initiator: { id: userIdString, name: req.user.name || 'Current User' },
-        recipient: { id: partnerId ? partnerId.toString() : 'unknown', name: 'Chat Partner' },
-        messages: [] 
+        recipient: { 
+          id: partnerIdStr, 
+          name: partnerRealName 
+        }
       };
-    });
+    }));
 
-    return res.status(200).json(formattedChannels);
+    // Filter out any null elements resulting from missing partner validation gates
+    const cleanedChannels = formattedChannels.filter(Boolean);
+
+    return res.status(200).json(cleanedChannels);
   } catch (err: any) {
-    console.error("🚨 Internal Channels Route Error Trace:", err.message);
+    console.error("🚨 Repaired Channels Aggregation Router Failed:", err.message);
     return res.status(500).json({ error: err.message });
   }
 });
 
-// 📁 POLYMORPHIC CONVERSATION ROOM CREATION ROUTE
+
+
 router.post('/conversations', verifyTokenInline, async (req: any, res: any): Promise<any> => {
   try {
     const { targetRecipientId, contextType, contextRefId } = req.body;
@@ -163,7 +211,7 @@ router.post('/conversations', verifyTokenInline, async (req: any, res: any): Pro
   }
 });
 
-// 📁 CONVERSATION HISTORY RETRIEVAL ROUTE
+
 router.get('/conversations/:conversationId/messages', verifyTokenInline, async (req: any, res: any): Promise<any> => {
   try {
     const { conversationId } = req.params;
@@ -186,18 +234,16 @@ router.get('/conversations/:conversationId/messages', verifyTokenInline, async (
   }
 });
 
-// 📁 CHAT MESSAGE GENERATION ROUTE
+
 router.post('/messages', verifyTokenInline, async (req: any, res: any): Promise<any> => {
   try {
-    const { conversationId, text } = req.body;
+    const { conversationId, text, productId, orderId } = req.body;
     const db = getDB();
     const currentUserId = req.user.id;
 
     if (!conversationId || !text) {
-      return res.status(400).json({ message: 'Missing conversationId or text parameter payloads.' });
+      return res.status(400).json({ message: 'Missing core message payload.' });
     }
-
-    await ensureCollectionsExist(db);
 
     const fallbackMessage = {
       conversationId: new ObjectId(conversationId),
@@ -205,27 +251,35 @@ router.post('/messages', verifyTokenInline, async (req: any, res: any): Promise<
       senderName: req.user.name,
       senderRole: req.user.role,
       text: text.trim(),
-      timestamp: new Date()
+      timestamp: new Date(),
+      
+ 
+        wooProductId: productId ? parseInt(productId, 10) : null,
+        wooOrderId: orderId ? parseInt(orderId, 10) : null
+
     };
 
     const result = await db.collection('chat').insertOne(fallbackMessage);
 
+    // Update conversation root metadata to match context triggers
     await db.collection('conversations').updateOne(
       { _id: new ObjectId(conversationId) },
-      { $set: { updatedAt: new Date() } }
+      { 
+        $set: { 
+          updatedAt: new Date(),
+          contextRefId: productId || orderId || null 
+        } 
+      }
     );
 
-    return res.status(201).json({
-      success: true,
-      message: "Message successfully saved directly to chat collection.",
-      data: { _id: result.insertedId, ...fallbackMessage }
-    });
+    return res.status(201).json({ success: true, data: { _id: result.insertedId, ...fallbackMessage } });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-// 🚀 FIX: Completed the missing file attachment block below to prevent route syntax failures
+
+
 router.post('/conversations/:conversationId/upload', verifyTokenInline, uploadMiddleware.single('file'), async (req: any, res: any): Promise<any> => {
   try {
     const { conversationId } = req.params;
@@ -269,8 +323,6 @@ router.post('/conversations/:conversationId/upload', verifyTokenInline, uploadMi
     return res.status(500).json({ error: err.message });
   }
 });
-// 📁 File: routes/auth.ts (or routes/chat.ts)
-// Ensure your verifyTokenInline middleware is imported or available in this file
 
 router.get('/directory', verifyTokenInline, async (req: any, res: any): Promise<any> => {
   try {
@@ -298,6 +350,38 @@ router.get('/directory', verifyTokenInline, async (req: any, res: any): Promise<
   } catch (err: any) {
     console.error("🚨 Directory Retrieval Failure:", err.message);
     return res.status(500).json({ error: err.message });
+  }
+});
+
+
+
+router.get('/profile/me', verifyTokenInline, async (req: any, res: any): Promise<any> => {
+  try {
+    const db = getDB();
+    const currentUserId = new ObjectId(req.user.id);
+
+    // Fetch the logged-in user profile, excluding the password hash for safety
+    const userProfile = await db.collection('users').findOne(
+      { _id: currentUserId },
+      { projection: { password: 0 } }
+    );
+
+    if (!userProfile) {
+      return res.status(404).json({ success: false, message: "User account records missing." });
+    }
+
+    return res.status(200).json({
+      success: true,
+      user: {
+        id: userProfile._id.toString(),
+        name: userProfile.name || userProfile.fullName,
+        email: userProfile.email,
+        role: userProfile.role
+      }
+    });
+  } catch (err: any) {
+    console.error("🚨 Profile fetch controller crashed:", err.message);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

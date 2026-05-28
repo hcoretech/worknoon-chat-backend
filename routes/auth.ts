@@ -1,4 +1,4 @@
-// 📁 File: routes/auth.ts
+// 📁 File: src/routes/auth.ts
 import express, { Request, Response } from 'express'; 
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -34,6 +34,21 @@ router.post('/signup', async (req: express.Request, res: express.Response): Prom
     };
 
     const result = await db.collection('users').insertOne(newUserDoc);
+    
+    // 👑 ADMIN AUDIT BROADCAST: Real-time user registration event dispatch
+    if (result.insertedId) {
+      const io = req.app.get('socketio'); 
+      if (io) {
+        io.emit('admin_audit_broadcast', {
+          type: 'signup',
+          userName: name,
+          userEmail: email,
+          userRole: role || 'customer',
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+    
     const userIdString = result.insertedId.toString();
 
     const token = jwt.sign(
@@ -60,7 +75,7 @@ router.post('/signup', async (req: express.Request, res: express.Response): Prom
 
     return res.status(201).json({
       success: true,
-      token: token, // 🚀 FIX: Removed the static string prefix wrapper
+      token: token, 
       user: { id: userIdString, name: newUserDoc.name, role: newUserDoc.role }
     });
   } catch (err: any) {
@@ -86,6 +101,18 @@ router.post('/login', async (req: Request, res: Response): Promise<any> => {
     if (!passwordMatch) {
       return res.status(401).json({ message: 'Authentication failure: Invalid credential values.' });
     }
+       
+    // 👑 ADMIN AUDIT BROADCAST: Real-time user login event dispatch
+    const io = req.app.get('socketio');
+    if (io) {
+      io.emit('admin_audit_broadcast', {
+        type: 'login',
+        userName: user.name || user.fullName || 'Workspace Operative',
+        userEmail: user.email,
+        userRole: user.role || 'customer',
+        timestamp: new Date().toISOString()
+      });
+    }
 
     const token = jwt.sign(
       { id: user._id.toString(), name: user.name, role: user.role },
@@ -95,7 +122,7 @@ router.post('/login', async (req: Request, res: Response): Promise<any> => {
 
     return res.status(200).json({
       success: true,
-      token: token, // 🚀 FIX: Deliver a clean, raw JWT token key string here
+      token: token, 
       user: { id: user._id.toString(), name: user.name, role: user.role }
     });
   } catch (err: any) {

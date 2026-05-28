@@ -164,6 +164,31 @@ export const initChatSocket = (io: Server) => {
         isTyping: data.isTyping 
       });
     });
+    // 📁 File: sockets/chat.js (Ensure these hooks are attached inside your io.on('connection') lifecycle)
+
+socket.on('user_typing', (data) => {
+  // Broadcast keystroke animations cleanly across target conversation rooms
+  socket.to(data.channelId).emit('user_typing_broadcast', data);
+});
+
+socket.on('read_messages', async (data) => {
+  const { channelId, userId } = data;
+  
+  try {
+    const db = getDB();
+    // Update MongoDB row entries explicitly
+    await db.collection('chat').updateMany(
+      { conversationId: new ObjectId(channelId), senderId: { $ne: new ObjectId(userId) }, isRead: false },
+      { $set: { isRead: true } }
+    );
+    
+    // Broadcast back to active clients to visually apply twin checkmark updates instantly
+    io.to(channelId).emit('messages_read_broadcast', { channelId, userId });
+  } catch (err: any) {
+    console.error("Backend read state acknowledgment error:", err.message);
+  }
+});
+
 
     socket.on('disconnect', () => {
       sessionTrackingMap.delete(activeUserId);
