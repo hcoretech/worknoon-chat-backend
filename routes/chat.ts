@@ -67,9 +67,7 @@ const verifyTokenInline = (req: any, res: any, next: any) => {
   }
 };
 
-// 📁 File: worknoon-chat-backend/src/routes/chat.ts
 
-// 📡 SECURE CHANNELS AGGREGATION ROUTE (FINAL STABLE VERSION)
 router.get('/channels', verifyTokenInline, async (req: any, res: any): Promise<any> => {
   try {
     const db = getDB();
@@ -328,32 +326,34 @@ router.get('/directory', verifyTokenInline, async (req: any, res: any): Promise<
   try {
     const db = getDB();
     const currentUserId = req.user.id;
+    const currentUserRole = req.user.role?.toLowerCase();
 
-    // Fetch all users except the currently logged-in user
+    // Base filtration gate check parameter loop: exclude self instantly from results
+    let query: any = { _id: { $ne: new ObjectId(currentUserId) } };
+
+    // 🚀 FIXED RESOLUTION: If the user is NOT an admin, completely filter out all administrators from their view!
+    if (currentUserRole !== 'admin') {
+      query.role = { $ne: 'admin' };
+    }
+
     const users = await db.collection('users')
-      .find(
-        { _id: { $ne: new ObjectId(currentUserId) } },
-        { projection: { password: 0 } } // 🚀 SAFETY: Explicitly strip password hashes
-      )
+      .find(query)
+      .project({ password: 0 }) 
       .sort({ name: 1 })
       .toArray();
 
-    // Map MongoDB _id object to standard id strings for frontend consistency
     const directory = users.map(u => ({
       id: u._id.toString(),
-      name: u.name,
+      name: u.name || u.fullName || 'Workspace Operator',
       email: u.email,
       role: u.role || 'customer'
     }));
 
     return res.status(200).json(directory);
   } catch (err: any) {
-    console.error("🚨 Directory Retrieval Failure:", err.message);
     return res.status(500).json({ error: err.message });
   }
 });
-
-
 
 router.get('/profile/me', verifyTokenInline, async (req: any, res: any): Promise<any> => {
   try {
